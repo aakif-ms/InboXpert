@@ -1,11 +1,9 @@
-from pydantic import BaseModel, EmailStr, Field
-from datetime import datetime
+from pydantic import BaseModel, EmailStr
 from typing import List
+from .accountModel import AccountSchema
 
 class UserSchema(BaseModel):
     name: str
     password: str
     email: EmailStr
-    accounts: List[str] = []
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
-    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+    accounts: List[AccountSchema] = []
