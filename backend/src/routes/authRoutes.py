@@ -10,9 +10,9 @@ db = init_db()
 users = db["users"]
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-client_secret = os.path.join(BASE_DIR, "client_secret_gmail.json")
+client_secret = os.path.join(BASE_DIR, "client_secret.json")
 
-auth_bp = Blueprint("auth", __name__)
+auth_bp = Blueprint("auth", __name__)   
 
 @auth_bp.route("/register", methods=["POST"])
 def register():

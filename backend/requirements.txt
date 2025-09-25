@@ -5,6 +5,7 @@ pydantic
 pydantic[email]
 python-dotenv
 passlib[bcrypt]
+cryptography
 google-auth 
 google-auth-oauthlib 
 google-auth-httplib2 

@@ -4,3 +4,4 @@ __pycache__/
 .env
 .DS_Store
 client_secret_gmail.json
+client_secret.json
