@@ -1,7 +1,17 @@
+try:
+    from ..utils.getMessageBody import get_message_body
+except ImportError:
+    import sys
+    from pathlib import Path
+    parent_dir = Path(__file__).parent.parent.parent
+    sys.path.insert(0, str(parent_dir))
+    from src.utils.getMessageBody import get_message_body
+
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from datetime import datetime, timezone
+import json
 
 try:
     from ..db import init_db
@@ -12,8 +22,14 @@ except ImportError:
     sys.path.insert(0, str(parent_dir))
     from src.db import init_db
 
+
 db = init_db()
 users = db['users']
+
+with open("client_secret.json", "r") as f:
+    data = json.load(f)
+    
+data = data["web"] 
 
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
@@ -40,8 +56,8 @@ def get_emails(user_email="aakif@gmail.com", max_results=10):
             token=access_token,
             refresh_token=refresh_token,
             token_uri="https://oauth2.googleapis.com/token",
-            client_id="", # Enter your client Id
-            client_secret="", # Enter you secret 
+            client_id=data["client_id"], 
+            client_secret=data["client_secret"], 
             scopes=SCOPES
         )
         
@@ -71,22 +87,22 @@ def get_emails(user_email="aakif@gmail.com", max_results=10):
         print(f"Fetching {max_results} emails for {user_email}...")
         results = service.users().messages().list(
             userId="me", 
-            maxResults=max_results
+            maxResults=max_results,
+            q="in:inbox -in:spam"
         ).execute()
-        
         messages = results.get("messages", [])
-        
+                
         if not messages:
             print("No messages found.")
             return []
         
         emails = []
-        for msg in messages:
+        for idx, msg in enumerate(messages):
             try:
                 msg_data = service.users().messages().get(
                     userId="me", 
                     id=msg["id"], 
-                    format="metadata"
+                    format="full",
                 ).execute()
                 
                 snippet = msg_data.get("snippet", "")
@@ -96,13 +112,15 @@ def get_emails(user_email="aakif@gmail.com", max_results=10):
                 headers = msg_data.get("payload", {}).get("headers", [])
                 subject = next((h["value"] for h in headers if h["name"] == "Subject"), "No Subject")
                 sender = next((h["value"] for h in headers if h["name"] == "From"), "Unknown Sender")
-                
+                payload = msg_data.get("payload", "")
+                email_body = get_message_body(payload=payload)
                 emails.append({
                     "id": email_id,
                     "thread_id": thread_id,
                     "subject": subject,
                     "sender": sender,
-                    "snippet": snippet
+                    "snippet": snippet,
+                    "email_body": email_body
                 })
                 
             except Exception as e:
@@ -123,6 +141,7 @@ def display_emails(emails):
         print(f"Subject: {email['subject']}")
         print(f"From: {email['sender']}")
         print(f"Snippet: {email['snippet'][:100]}...")
+        print(f"Bodt: {email['email_body'][:100]}...")
 
 if __name__ == "__main__":    
     emails = get_emails()

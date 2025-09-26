@@ -4,6 +4,7 @@ pymongo
 pydantic
 pydantic[email]
 python-dotenv
+beautifulsoup4
 passlib[bcrypt]
 cryptography
 google-auth 

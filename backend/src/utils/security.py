@@ -5,3 +5,4 @@ def hashPassword(password: str) -> str:
 
 def checkPassword(password: str, hashedPassword: str) -> bool:
     return bcrypt.checkpw(password.encode("utf-8"), hashedPassword.encode("utf-8"))
+

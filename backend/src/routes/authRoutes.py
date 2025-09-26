@@ -3,8 +3,6 @@ from google_auth_oauthlib.flow import Flow
 import os
 from ..services.authUser import registerUser, loginUser
 from ..db import init_db
-import os
-
 
 db = init_db()
 users = db["users"]
