@@ -13,3 +13,7 @@ google-auth-httplib2
 google-api-python-client
 msal
 requests
+langchain
+langgraph
+langchain-openai
+langchain-core
