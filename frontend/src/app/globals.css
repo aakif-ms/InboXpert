@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Alan+Sans:wght@300..900&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -41,6 +42,9 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  --color-darkBlue: #101828;
+  --font-alan: "Alan Sans", sans-serif;
 }
 
 :root {
