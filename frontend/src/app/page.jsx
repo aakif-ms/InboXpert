@@ -10,7 +10,7 @@ import emailsData from "./dummy.json";
 export default function Dashboard() {
   return (
     <>
-      <h1 className="text-2xl font-bold mb-6 text-black dark:text-white font-alan">Inbox</h1>
+      <h1 className="text-2xl font-bold mb-6 text-black font-alan">Inbox</h1>
       <div className="bg-white min-h-full rounded-xl flex flex-col border border-gray-200 ">
         <div className="flex justify-between items-center h-20 px-6 min-w-full bg-[#f5f5f5] rounded-t-xl border-b border-gray-300">
           <div className="flex justify-between w-1/5">
