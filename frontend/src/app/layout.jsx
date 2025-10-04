@@ -1,5 +1,5 @@
 import "./globals.css";
-
+import { AuthProvider } from "@/contexts/AuthContext";
 import SidebarLayout from "@/components/SidebarLayout.jsx";
 
 export const metadata = {
@@ -11,7 +11,9 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body>
-        <SidebarLayout>{children}</SidebarLayout>
+        <AuthProvider>
+          <SidebarLayout>{children}</SidebarLayout>
+        </AuthProvider>
       </body>
     </html>
   );

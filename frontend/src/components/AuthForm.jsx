@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -8,23 +8,90 @@ import {
   IconBrandGoogle,
 } from "@tabler/icons-react";
 import Link from "next/link";
+import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
 
 export function AuthForm({ type = "login" }) {
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
-    username: "",
+    name: "",
     email: "",
     password: "",
     confirmPassword: ""
   });
-
+  
+  const [formErrors, setFormErrors] = useState({});
+  const { login, register, loading, error, clearError, isAuthenticated } = useAuth();
+  const router = useRouter();
+  
   const isLogin = type === "login";
   const isSignup = type === "signup";
 
-  const handleSubmit = (e) => {
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/');
+    }
+  }, [isAuthenticated, router]);
+
+  useEffect(() => {
+    clearError();
+    setFormErrors({});
+  }, [type, clearError]);
+
+  const validateForm = () => {
+    const errors = {};
+    
+    if (!formData.email) {
+      errors.email = 'Email is required';
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      errors.email = 'Email is invalid';
+    }
+    
+    if (!formData.password) {
+      errors.password = 'Password is required';
+    } else if (formData.password.length < 6) {
+      errors.password = 'Password must be at least 6 characters';
+    }
+    
+    if (isSignup) {
+      const fullName = `${formData.firstName} ${formData.lastName}`.trim();
+      if (!formData.firstName || !formData.lastName) {
+        errors.name = 'First and last name are required';
+      }
+      
+      if (formData.password !== formData.confirmPassword) {
+        errors.confirmPassword = 'Passwords do not match';
+      }
+      
+      setFormData(prev => ({ ...prev, name: fullName }));
+    }
+    
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log(`${type} form submitted:`, formData);
+    
+    if (!validateForm()) return;
+    
+    try {
+      let result;
+      
+      if (isLogin) {
+        result = await login(formData.email, formData.password);
+      } else {
+        const fullName = `${formData.firstName} ${formData.lastName}`.trim();
+        result = await register(fullName, formData.email, formData.password);
+      }
+      
+      if (result.success) {
+        router.push('/');
+      }
+    } catch (error) {
+      console.error('Authentication error:', error);
+    }
   };
 
   const handleInputChange = (e) => {
@@ -33,10 +100,13 @@ export function AuthForm({ type = "login" }) {
       ...prev,
       [id]: value
     }));
-  };
-
-  const handleSocialAuth = (provider) => {
-    console.log(`${provider} authentication initiated`);
+    
+    if (formErrors[id]) {
+      setFormErrors(prev => ({
+        ...prev,
+        [id]: ''
+      }));
+    }
   };
 
   return (
@@ -47,6 +117,12 @@ export function AuthForm({ type = "login" }) {
       <p className="mt-2 max-w-sm text-sm text-neutral-600 dark:text-neutral-300">
         {isLogin ? "Login to InboXpert" : "Create your account to get started"}
       </p>
+      
+      {error && (
+        <div className="mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+          {error}
+        </div>
+      )}
       
       <form className="my-8" onSubmit={handleSubmit}>
         {isSignup && (
@@ -59,6 +135,7 @@ export function AuthForm({ type = "login" }) {
                 type="text" 
                 value={formData.firstName}
                 onChange={handleInputChange}
+                className={formErrors.name ? "border-red-500" : ""}
               />
             </LabelInputContainer>
             <LabelInputContainer>
@@ -69,21 +146,12 @@ export function AuthForm({ type = "login" }) {
                 type="text" 
                 value={formData.lastName}
                 onChange={handleInputChange}
+                className={formErrors.name ? "border-red-500" : ""}
               />
             </LabelInputContainer>
           </div>
         )}
-        
-        <LabelInputContainer className="mb-4">
-          <Label htmlFor="username">Username</Label>
-          <Input 
-            id="username" 
-            placeholder="tyler_durden" 
-            type="text" 
-            value={formData.username}
-            onChange={handleInputChange}
-          />
-        </LabelInputContainer>
+        {formErrors.name && <p className="text-red-500 text-sm mb-4">{formErrors.name}</p>}
         
         <LabelInputContainer className="mb-4">
           <Label htmlFor="email">Email Address</Label>
@@ -93,7 +161,9 @@ export function AuthForm({ type = "login" }) {
             type="email" 
             value={formData.email}
             onChange={handleInputChange}
+            className={formErrors.email ? "border-red-500" : ""}
           />
+          {formErrors.email && <p className="text-red-500 text-sm">{formErrors.email}</p>}
         </LabelInputContainer>
         
         <LabelInputContainer className="mb-4">
@@ -104,7 +174,9 @@ export function AuthForm({ type = "login" }) {
             type="password" 
             value={formData.password}
             onChange={handleInputChange}
+            className={formErrors.password ? "border-red-500" : ""}
           />
+          {formErrors.password && <p className="text-red-500 text-sm">{formErrors.password}</p>}
         </LabelInputContainer>
         
         {isSignup && (
@@ -116,15 +188,25 @@ export function AuthForm({ type = "login" }) {
               type="password" 
               value={formData.confirmPassword}
               onChange={handleInputChange}
+              className={formErrors.confirmPassword ? "border-red-500" : ""}
             />
+            {formErrors.confirmPassword && <p className="text-red-500 text-sm">{formErrors.confirmPassword}</p>}
           </LabelInputContainer>
         )}
 
         <button
-          className="group/btn relative block h-10 w-full rounded-md bg-gradient-to-br from-black to-neutral-600 font-medium text-white shadow-[0px_1px_0px_0px_#ffffff40_inset,0px_-1px_0px_0px_#ffffff40_inset] dark:bg-zinc-800 dark:from-zinc-900 dark:to-zinc-900 dark:shadow-[0px_1px_0px_0px_#27272a_inset,0px_-1px_0px_0px_#27272a_inset]"
+          className="group/btn relative block h-10 w-full rounded-md bg-gradient-to-br from-black to-neutral-600 font-medium text-white shadow-[0px_1px_0px_0px_#ffffff40_inset,0px_-1px_0px_0px_#ffffff40_inset] dark:bg-zinc-800 dark:from-zinc-900 dark:to-zinc-900 dark:shadow-[0px_1px_0px_0px_#27272a_inset,0px_-1px_0px_0px_#27272a_inset] disabled:opacity-50"
           type="submit"
+          disabled={loading}
         >
-          {isLogin ? "Sign in" : "Sign up"} &rarr;
+          {loading ? (
+            <span className="flex items-center justify-center">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+              {isLogin ? "Signing in..." : "Signing up..."}
+            </span>
+          ) : (
+            <>{isLogin ? "Sign in" : "Sign up"} &rarr;</>
+          )}
           <BottomGradient />
         </button>
 
@@ -134,7 +216,7 @@ export function AuthForm({ type = "login" }) {
           <button
             className="group/btn shadow-input relative flex h-10 w-full items-center justify-start space-x-2 rounded-md bg-gray-50 px-4 font-medium text-black dark:bg-zinc-900 dark:shadow-[0px_0px_1px_1px_#262626]"
             type="button"
-            onClick={() => handleSocialAuth('github')}
+            disabled={loading}
           >
             <IconBrandGithub className="h-4 w-4 text-neutral-800 dark:text-neutral-300" />
             <span className="text-sm text-neutral-700 dark:text-neutral-300">
@@ -145,7 +227,7 @@ export function AuthForm({ type = "login" }) {
           <button
             className="group/btn shadow-input relative flex h-10 w-full items-center justify-start space-x-2 rounded-md bg-gray-50 px-4 font-medium text-black dark:bg-zinc-900 dark:shadow-[0px_0px_1px_1px_#262626]"
             type="button"
-            onClick={() => handleSocialAuth('google')}
+            disabled={loading}
           >
             <IconBrandGoogle className="h-4 w-4 text-neutral-800 dark:text-neutral-300" />
             <span className="text-sm text-neutral-700 dark:text-neutral-300">
