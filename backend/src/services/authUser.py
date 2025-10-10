@@ -12,7 +12,7 @@ load_dotenv()
 db = init_db()
 users = db["users"]
 
-JWT_SECRET = os.getenv('JWT_SECRET_KEY', 'your-super-secret-jwt-key-change-in-production')
+JWT_SECRET = os.getenv('JWT_SECRET_KEY')
 JWT_EXPIRATION_HOURS = int(os.getenv('JWT_EXPIRATION_HOURS', '24'))
 
 def generate_jwt_token(user_id: str, email: str) -> str:

@@ -1,4 +1,3 @@
-import msal
 import requests
 from ..db import init_db
 

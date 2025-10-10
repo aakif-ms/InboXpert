@@ -46,7 +46,6 @@ reply_chain = reply_prompt | model | parser
 
 
 class EmailState(TypedDict):
-    """Represents the state of our email processing agent"""
     body: str
     subject: str
     classification: str
@@ -54,7 +53,6 @@ class EmailState(TypedDict):
     result: str
 
 def classify_node(state: EmailState) -> EmailState:
-    """Invokes the classification node and updates the state result"""
 
     category = classifier_chain.invoke({
         "subject": state["subject"],
@@ -64,8 +62,6 @@ def classify_node(state: EmailState) -> EmailState:
     return {"classification": category.strip(),"result": category.strip()}
 
 def summarize_node(state: EmailState) -> EmailState:
-    """Invokes the summarization node and updates the state result"""
-
     summarize = summarizer_chain.invoke({
         "subject": state["subject"],
         "body": state["body"]
@@ -74,8 +70,6 @@ def summarize_node(state: EmailState) -> EmailState:
     return {"classification": state["classification"], "result": summarize.strip()}
 
 def reply_node(state: EmailState) -> EmailState:
-    """Invokes the reply node and updates the state result"""
-
     reply = reply_chain.invoke({
         "subject": state["subject"],
         "body": state["body"]

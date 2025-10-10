@@ -20,8 +20,7 @@ client_secret = os.path.join(BASE_DIR, "client_secret.json")
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 
-# Use HTTP for development, HTTPS for production
-BASE_URL = "http://localhost:5000" if os.getenv('FLASK_ENV') == 'development' else "https://yourproductiondomain.com"
+BASE_URL = "https://localhost:5000"
 AUTHORITY = "https://login.microsoftonline.com/YOUR_TENANT_ID"
 REDIRECT_URI = f"{BASE_URL}/auth/microsoft/callback"
 
@@ -237,177 +236,166 @@ def fetch_emails(current_user):
         return jsonify({"error": "User not found"}), 404
     
     accounts = user.get("accounts", [])
-    provider = next((obj for obj in accounts if obj["provider"] == "microsoft" and obj.get("access_token") is not None), None)
+    all_emails = []
+    errors = []
+        
+    gmail_account = next((acc for acc in accounts if acc.get("provider") == "gmail" and acc.get("access_token")), None)
+    if gmail_account:
+        try:
+            from ..services.gmail_services import get_emails as get_gmail_emails
+            gmail_emails = get_gmail_emails(current_user['email'], max_results=20)
+            for email in gmail_emails:
+                email['provider'] = 'gmail'
+                email['provider_icon'] = '📧'
+            all_emails.extend(gmail_emails)
+        except Exception as e:
+            errors.append(f"Gmail fetch error: {str(e)}")
     
-    if not provider:
-        return jsonify({"error": "Microsoft provider not found or no access token available"}), 400
+    print("Gmail Account: ", gmail_account)
+    
+    microsoft_account = next((acc for acc in accounts if acc.get("provider") == "microsoft" and acc.get("access_token")), None)
+    if microsoft_account:
+        try:
+            outlook_emails = fetch_outlook_emails(microsoft_account)
+            for email in outlook_emails:
+                email['provider'] = 'outlook'
+                email['provider_icon'] = '📫'
+            all_emails.extend(outlook_emails)
+        except Exception as e:
+            errors.append(f"Outlook fetch error: {str(e)}")
+    
+    all_emails.sort(key=lambda x: x.get('received_date', ''), reverse=True)
+    
+    print("Microsoft Account: ", microsoft_account)
+    
+    response = {
+        "status": "success",
+        "data": all_emails,
+        "total_count": len(all_emails),
+        "connected_accounts": {
+            "gmail": bool(gmail_account),
+            "outlook": bool(microsoft_account)
+        }
+    }
+    
+    if errors:
+        response["warnings"] = errors
+    
+    print("errors: ", errors)
+    
+    return jsonify(response)
 
-    access_token = provider["access_token"]
+@auth_bp.route("/email/<email_id>")
+@jwt_required
+def get_email_detail(current_user, email_id):
+    user = users.find_one({"email": current_user['email']})
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    provider = request.args.get('provider', 'gmail')
+    
+    try:
+        if provider == 'gmail':
+            from ..services.gmail_services import get_email_detail as get_gmail_detail
+            email_detail = get_gmail_detail(current_user['email'], email_id)
+        else:  
+            accounts = user.get("accounts", [])
+            microsoft_account = next((acc for acc in accounts if acc.get("provider") == "microsoft"), None)
+            if not microsoft_account:
+                return jsonify({"error": "Microsoft account not connected"}), 400
+            email_detail = get_outlook_email_detail(microsoft_account, email_id)
+        
+        return jsonify({
+            "status": "success",
+            "data": email_detail
+        })
+    
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Failed to fetch email detail: {str(e)}"
+        }), 500
+
+def fetch_outlook_emails(microsoft_account):
+    access_token = microsoft_account["access_token"]
     
     url = "https://graph.microsoft.com/v1.0/me/messages"
+    params = {
+        "$top": 20,
+        "$orderby": "receivedDateTime desc",
+        "$select": "id,subject,from,receivedDateTime,bodyPreview,isRead,hasAttachments,webLink"
+    }
+    
     headers = {
         "Authorization": f"Bearer {access_token}"
     }
     
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, params=params)
     
-    if response.status_code == 200:
-        data = response.json()
-        content = data["value"]
-        processed_mails = []
+    if response.status_code != 200:
+        raise Exception(f"Outlook API error: {response.status_code} - {response.text}")
+    
+    data = response.json()
+    emails = []
+    
+    for mail in data.get("value", []):
+        email = {
+            "id": mail.get("id"),
+            "thread_id": mail.get("id"), 
+            "subject": mail.get("subject", "No Subject"),
+            "sender": mail.get("from", {}).get("emailAddress", {}).get("address", "Unknown Sender"),
+            "sender_name": mail.get("from", {}).get("emailAddress", {}).get("name", "Unknown"),
+            "snippet": mail.get("bodyPreview", "")[:150],
+            "received_date": mail.get("receivedDateTime"),
+            "is_read": mail.get("isRead", False),
+            "has_attachments": mail.get("hasAttachments", False),
+            "web_link": mail.get("webLink")
+        }
+        emails.append(email)
+    
+    return emails
 
-        for mails in content:
-            email_body = mails["body"]["content"]        
-            soup = BeautifulSoup(email_body, 'html.parser')
-            email_text = soup.get_text(separator=' ', strip=True)
-            processed_mails.append({
-                "id": mails.get("id"),
-                "subject": mails.get("subject"),
-                "from": mails.get("from", {}).get("emailAddress", {}).get("address"),
-                "body": email_text[:500]  # Limit body length
-            })
-        return jsonify({"status": "success", "data": processed_mails})
+def get_outlook_email_detail(microsoft_account, email_id):
+    access_token = microsoft_account["access_token"]
+    
+    url = f"https://graph.microsoft.com/v1.0/me/messages/{email_id}"
+    params = {
+        "$select": "id,subject,from,toRecipients,ccRecipients,receivedDateTime,body,hasAttachments,attachments"
+    }
+    
+    headers = {
+        "Authorization": f"Bearer {access_token}"
+    }
+    
+    response = requests.get(url, headers=headers, params=params)
+    
+    if response.status_code != 200:
+        raise Exception(f"Outlook API error: {response.status_code} - {response.text}")
+    
+    mail = response.json()
+    
+    to_recipients = [rec.get("emailAddress", {}).get("address") for rec in mail.get("toRecipients", [])]
+    cc_recipients = [rec.get("emailAddress", {}).get("address") for rec in mail.get("ccRecipients", [])]
+    
+    body_content = mail.get("body", {}).get("content", "")
+    if mail.get("body", {}).get("contentType") == "html":
+        soup = BeautifulSoup(body_content, 'html.parser')
+        body_text = soup.get_text(separator=' ', strip=True)
     else:
-        print("Error fetching mails:", response.json())
-        return jsonify({"status": "error", "message": "Error fetching emails", "details": response.json()}), 500
-
-
-# @auth_bp.route("/gmail/connect")
-# def gmail_connect():
-#     flow = Flow.from_client_secrets_file(
-#         client_secret,
-#         scopes=[
-#             "https://www.googleapis.com/auth/gmail.readonly",
-#             "https://www.googleapis.com/auth/gmail.send",
-#         ],
-#         redirect_uri=url_for("auth.gmail_callback", _external=True),
-#     )
-#     auth_url, _ = flow.authorization_url(
-#         prompt="consent", access_type="offline", include_granted_scopes="true"
-#     )
-#     return redirect(auth_url)
-
-
-# @auth_bp.route("/gmail/callback")
-# def gmail_callback():
-#     flow = Flow.from_client_secrets_file(
-#         client_secret,
-#         scopes=[
-#             "https://www.googleapis.com/auth/gmail.readonly",
-#             "https://www.googleapis.com/auth/gmail.send",
-#         ],
-#         redirect_uri=url_for("auth.gmail_callback", _external=True),
-#     )
-#     flow.fetch_token(authorization_response=request.url)
-#     credentials = flow.credentials
-
-#     db.users.update_one(
-#     {"email": "aakif@gmail.com"},
-#     {"$pull": {"accounts": {"provider": "gmail"}}}
-#     )
-
-#     users.update_one(
-#         {"email": "aakif@gmail.com"},
-#         {
-#             "$push": {
-#                 "accounts": {
-#                     "provider": "gmail",
-#                     "email": "aakif@gmail.com",
-#                     "access_token": credentials.token,
-#                     "refresh_token": credentials.refresh_token,
-#                     "expires_at": credentials.expiry,
-#                 }
-#             }
-#         },
-#     )
-#     return "Gmail connected successfully!"
-
-
-# @auth_bp.route("/microsoft/connect")
-# def microsoft_connect():
-#     auth_url = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
-#     params = {
-#         "client_id": CLIENT_ID,
-#         "response_type": "code",
-#         "redirect_uri": REDIRECT_URI,
-#         "response_mode": "query",
-#         "scope": "User.Read Mail.Read Mail.Send",
-#         "state": "12345",
-#     }
-#     url = f"{auth_url}?{urllib.parse.urlencode(params)}"
-#     return redirect(url)
-
-
-# @auth_bp.route("/microsoft/callback")
-# def microsoft_callback():
-#     code = request.args.get("code")
-
-#     token_url = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-#     data = {
-#         "client_id": CLIENT_ID,
-#         "scope": "User.Read Mail.Read Mail.Send",
-#         "code": code,
-#         "redirect_uri": REDIRECT_URI,
-#         "grant_type": "authorization_code",
-#         "client_secret": CLIENT_SECRET,
-#     }
-
-#     response = requests.post(token_url, data=data)
-#     tokens = response.json()
+        body_text = body_content
     
-#     db.users.update_one(
-#     {"email": "aakif@gmail.com"},
-#     {"$pull": {"accounts": {"provider": "microsoft"}}}
-#     )
+    email_detail = {
+        "id": mail.get("id"),
+        "subject": mail.get("subject", "No Subject"),
+        "sender": mail.get("from", {}).get("emailAddress", {}).get("address", "Unknown"),
+        "sender_name": mail.get("from", {}).get("emailAddress", {}).get("name", "Unknown"),
+        "to_recipients": to_recipients,
+        "cc_recipients": cc_recipients,
+        "received_date": mail.get("receivedDateTime"),
+        "body": body_text,
+        "html_body": body_content,
+        "has_attachments": mail.get("hasAttachments", False),
+        "provider": "outlook"
+    }
     
-#     users.update_one(
-#         {"email": "aakif@gmail.com"},
-#         {
-#             "$push": {
-#                 "accounts": {
-#                     "provider": "microsoft",
-#                     "access_token": tokens.get("access_token"),
-#                     "expires_at": datetime.now(timezone.utc)
-#                     + timedelta(seconds=tokens.get("expires_in", 0)),
-#                 }
-#             },
-#         },
-#     )
-#     return "Microsoft account connected successfully!"
-
-
-# @auth_bp.route("/fetch_emails")
-# def fetch_emails():
-#     user = users.find_one({"email": "aakif@gmail.com"})
-#     if not user:
-#         return "User not found", 404  
-    
-#     accounts = user.get("accounts", [])
-#     provider = next((obj for obj in accounts if obj["provider"] == "microsoft" and obj.get("access_token") is not None), None)
-    
-#     if not provider:
-#         return "Microsoft provider not found or no access token available", 400  
-
-#     access_token = provider["access_token"]
-    
-#     url = "https://graph.microsoft.com/v1.0/me/messages"
-#     headers = {
-#         "Authorization": f"Bearer {access_token}"
-#     }
-    
-#     response = requests.get(url, headers=headers)
-    
-#     if response.status_code == 200:
-#         data = response.json()
-#         content = data["value"]
-#         processed_mails = []
-
-#         for mails in content:
-#             email_body = mails["body"]["content"]        
-#             soup = BeautifulSoup(email_body, 'html.parser')
-#             email_text = soup.get_text(separator=' ', strip=True)
-#             processed_mails.append(email_text)
-#         return jsonify({"status": "success", "data": processed_mails})  
-#     else:
-#         print("Error fetching mails:", response.json())
-#         return jsonify({"status": "error", "message": "Error fetching emails", "details": response.json()}), 500  
+    return email_detail
