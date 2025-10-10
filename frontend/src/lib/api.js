@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://127.0.0.1:5000',
+  baseURL: 'https://127.0.0.1:5000',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -63,8 +63,13 @@ export const authAPI = {
     return response.data;
   },
   
-  fetchEmails: async () => {
-    const response = await api.get('/auth/fetch_emails');
+  fetchEmails: async (params = {}) => {
+    const response = await api.get('/auth/fetch_emails', { params });
+    return response.data;
+  },
+  
+  getEmailDetail: async (emailId) => {
+    const response = await api.get(`/auth/email/${emailId}`);
     return response.data;
   }
 };
